@@ -1,6 +1,6 @@
 {
   "name": "@wyre-ai/node-dubber",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Node.js client library for the Dubber API (call recording, compliance, Dub.Point telecom integration)",
   "type": "module",
   "main": "./dist/index.cjs",
