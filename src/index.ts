@@ -22,10 +22,10 @@ export {
 } from './errors.js';
 export { GroupsResource } from './resources/groups.js';
 export { AccountsResource } from './resources/accounts.js';
-export { RecordingsResource } from './resources/recordings.js';
+export { RecordingsResource, type GetRecordingParams } from './resources/recordings.js';
 export { UsersResource } from './resources/users.js';
 export { ProfileResource } from './resources/profile.js';
 export { NotificationsResource } from './resources/notifications.js';
-export { DubPointsResource } from './resources/dub-points.js';
+export { DubPointsResource, type ListDubPointsParams } from './resources/dub-points.js';
 export { unwrapList } from './types/index.js';
 export type * from './types/index.js';

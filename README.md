@@ -55,8 +55,44 @@ shipping against the wrong region silently talks to the wrong tenant.
 | Users | `client.users` | list, create, get, update, delete |
 | Profile | `client.profile` | get |
 | Notifications (REST hooks) | `client.notifications` | list, create, get, update, activate, listUnclaimed, delete |
-| Dub.Point | `client.dubPoints` | list, create, get, find |
+| Dub.Point | `client.dubPoints` | list (user filter, pagination), listAll, create, get, find |
 | OAuth | `client.revokeToken()`, `client.testConnection()` | token revoke, connection test |
+
+## Recording links
+
+`recordings.get(id)` returns details only. To get a playable link, pass a
+`listener`: the email of an existing Dubber user who has access to the recording.
+
+```ts
+const rec = await client.recordings.get('rec-id', {
+  listener: 'agent@example.com',
+  content_disposition: 'attachment;filename=call.mp3', // optional
+});
+rec.recording_url; // pre-signed S3 URL
+```
+
+`content_disposition` must be `inline` (Dubber's default), `attachment`, or
+`attachment;filename=<name>.mp3` (only mp3 names are supported); anything else
+throws a `ValidationError` before a request is made.
+
+`recording_url` is a **pre-signed, short-lived** URL whose query string carries
+AWS credentials. Treat it as a secret: anyone holding it can fetch the audio
+until it expires. Don't log it, store it, or put it in analytics/error reports;
+fetch it right before use. The same applies to `waveform_url` from
+`recordings.getWaveform`. The SDK itself never logs URLs or response bodies.
+
+## Dub.Point user filter
+
+```ts
+await client.dubPoints.list('acc-1', { user: 'USER_ID', count: 100, page: 2 });
+await client.dubPoints.listAll('acc-1', { user: 'USER_ID' }); // all pages, deduped
+```
+
+`user` is a Dubber user id (the `user` field on a dub point is a URL ending in
+that id). `count` is 1–100 (Dubber default 20). Dubber doesn't document whether
+`page` is 0- or 1-based, so `listAll` is defensive: it omits `page` first, then
+requests `page=1,2,...`, dedupes by id, stops on a short page or no new ids, and
+makes at most 50 requests.
 
 ## Error handling
 

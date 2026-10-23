@@ -31,11 +31,20 @@ export interface Recording {
   created_at?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * Pre-signed, short-lived S3 URL. Only present when `recordings.get` was
+   * called with a `listener`. Treat as a secret; never log it.
+   */
+  recording_url?: string;
   [key: string]: unknown;
 }
 
 export interface Waveform {
   recording_id?: string;
+  self?: string;
+  recording?: string;
+  /** Pre-signed S3 URL (short expiry). Treat as a secret; never log it. */
+  waveform_url?: string;
   [key: string]: unknown;
 }
 
@@ -73,6 +82,18 @@ export interface DubPoint {
   id: string;
   name?: string;
   account_id?: string;
+  self?: string;
+  /** e.g. "API" | "Recorder" */
+  type?: string;
+  label?: string;
+  /** URL of the owning user (`.../users/<USER_ID>`), not a bare id. */
+  user?: string;
+  status?: string;
+  product?: string;
+  external_type?: string;
+  external_identifier?: string;
+  date_created?: string;
+  date_updated?: string;
   [key: string]: unknown;
 }
 
