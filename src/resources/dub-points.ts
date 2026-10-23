@@ -12,9 +12,15 @@ export interface ListDubPointsParams {
   page?: number;
 }
 
+/** Collected dub points and the reason pagination stopped. */
 export interface ListAllDubPointsResult {
+  /** Deduplicated Dub.Points collected before pagination stopped. */
   dubPoints: DubPoint[];
+  /** True when results may be incomplete: the request cap or a later full page with no new ids. */
   truncated: boolean;
+  /** 'complete': short/empty page; 'limit': request cap; 'no-progress': later full page with no new ids. */
+  stopReason: 'complete' | 'limit' | 'no-progress';
+  /** Number of list requests made. */
   requests: number;
 }
 
@@ -55,23 +61,33 @@ export class DubPointsResource {
    * onward is correct. Stops on a short/empty page, or a page past page=1
    * yielding no new ids (guards against a server ignoring `page`), with a hard
    * cap of {@link MAX_PAGES} requests. Results are deduped by id.
-   * By default (`onLimit: 'return'`), returns collected results even at the cap.
-   * With `onLimit: 'throw'`, throws PaginationLimitError with partial results if more may exist.
-   * Use listAllWithStatus to inspect truncation and the number of requests.
+   * By default (`onLimit: 'return'`), returns collected results even when incomplete.
+   * With `onLimit: 'throw'`, throws PaginationLimitError with partial results and a reason for either incomplete stop.
+   * Use listAllWithStatus to inspect truncation, stopReason, and the number of requests.
    */
   async listAll(accountId: string, params?: { user?: string; onLimit?: 'return' | 'throw' }): Promise<DubPoint[]> {
     const result = await this.listAllWithStatus(accountId, params);
     if (result.truncated && params?.onLimit === 'throw') {
+      const reason = result.stopReason === 'no-progress' ? 'no-progress' : 'limit';
+      const message = reason === 'limit'
+        ? `listAll stopped at the ${MAX_PAGES}-request pagination limit; more dub points may exist `
+        : 'listAll stopped because a later full page returned no new dub points ' +
+          '(the server may be ignoring page); results may be incomplete ';
       throw new PaginationLimitError(
-        `listAll stopped at the ${MAX_PAGES}-request pagination limit; more dub points may exist ` +
-          `(${result.dubPoints.length} collected). Use listAllWithStatus or narrow with user.`,
-        result.dubPoints
+        message + `(${result.dubPoints.length} collected). Use listAllWithStatus or narrow with user.`,
+        result.dubPoints,
+        reason
       );
     }
     return result.dubPoints;
   }
 
-  /** Fetch deduped dub points as in listAll, reporting whether the request cap may have left more results. */
+  /**
+   * Fetch deduped dub points as in listAll, reporting requests and stopReason.
+   * A short/empty page is 'complete'; the 50-request cap is 'limit'; a full page past page=1
+   * with no new ids is 'no-progress'. Both 'limit' and 'no-progress' set truncated to true.
+   * A repeated page=1 is skipped for compatibility with 1-based paging and does not stop pagination.
+   */
   async listAllWithStatus(accountId: string, params?: { user?: string }): Promise<ListAllDubPointsResult> {
     const seen = new Set<string>();
     const all: DubPoint[] = [];
@@ -90,11 +106,14 @@ export class DubPointsResource {
         all.push(dp);
         added++;
       }
-      if (page.length < MAX_COUNT || (added === 0 && request > 1)) {
-        return { dubPoints: all, truncated: false, requests };
+      if (page.length < MAX_COUNT) {
+        return { dubPoints: all, truncated: false, stopReason: 'complete', requests };
+      }
+      if (added === 0 && request > 1) {
+        return { dubPoints: all, truncated: true, stopReason: 'no-progress', requests };
       }
     }
-    return { dubPoints: all, truncated: true, requests };
+    return { dubPoints: all, truncated: true, stopReason: 'limit', requests };
   }
 
   async create(accountId: string, data: Record<string, unknown>): Promise<DubPoint> {

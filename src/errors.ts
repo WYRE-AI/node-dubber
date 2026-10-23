@@ -1,3 +1,5 @@
+import type { DubPoint } from './types/index.js';
+
 /**
  * Base error: HTTP status and the raw response body. Dubber's error envelope
  * shape is not published in the getting-started guide or the interactive
@@ -19,11 +21,12 @@ export class DubberError extends Error {
   }
 }
 
-/** Pagination stopped at the request limit; partial contains the results collected so far. */
+/** Pagination stopped with possibly incomplete results; partial contains the results collected so far. */
 export class PaginationLimitError extends DubberError {
   constructor(
     message: string,
-    public partial: unknown[]
+    public partial: DubPoint[],
+    public readonly reason: 'limit' | 'no-progress'
   ) {
     super(message, 0, undefined);
   }

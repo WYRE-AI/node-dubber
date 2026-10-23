@@ -86,17 +86,20 @@ fetch it right before use. The same applies to `waveform_url` from
 ```ts
 await client.dubPoints.list('acc-1', { user: 'USER_ID', count: 100, page: 2 });
 await client.dubPoints.listAll('acc-1', { user: 'USER_ID' }); // deduped, up to 50 requests
-const { dubPoints, truncated, requests } = await client.dubPoints.listAllWithStatus('acc-1', { user: 'USER_ID' });
+const { dubPoints, truncated, stopReason, requests } = await client.dubPoints.listAllWithStatus('acc-1', { user: 'USER_ID' });
 await client.dubPoints.listAll('acc-1', { user: 'USER_ID', onLimit: 'throw' });
 ```
 
 `user` is a Dubber user id (the `user` field on a dub point is a URL ending in
 that id). `count` is 1–100 (Dubber default 20). Dubber doesn't document whether
 `page` is 0- or 1-based, so `listAll` is defensive: it omits `page` first, then
-requests `page=1,2,...`, dedupes by id, stops on a short page or no new ids, and
-makes at most 50 requests. `listAllWithStatus` reports `truncated: true` when the
-cap leaves possible additional results; default `listAll` still returns the collected array.
-With `onLimit: 'throw'`, it instead throws `PaginationLimitError` with the collected dub points in `partial`.
+requests `page=1,2,...`, dedupes by id, stops on a short page or a page past `page=1`
+that yields no new ids, and makes at most 50 requests. `listAllWithStatus` returns
+`truncated` and `stopReason` ('complete' | 'limit' | 'no-progress'). Both 'limit' and
+'no-progress' mean results may be incomplete and set `truncated: true`.
+Default `listAll` still returns the collected array. With `onLimit: 'throw'`, it instead
+throws `PaginationLimitError` in either incomplete case, with the collected dub points
+in `partial` and the cause in `reason`.
 
 ## Error handling
 
@@ -105,7 +108,8 @@ Every non-2xx response throws a `DubberError` subclass:
 `ValidationError` (400/422), `ConflictError` (409), `RateLimitError` (429,
 carries `retryAfter`), `ServerError` (5xx).
 `PaginationLimitError` is a local `DubberError` thrown when `listAll` reaches its
-request cap with possible additional results and `onLimit` is `'throw'`.
+request cap or a later full page yields no new ids, and `onLimit` is `'throw'`.
+Its `partial` contains collected dub points and `reason` is 'limit' or 'no-progress'.
 
 ```ts
 import { NotFoundError } from '@wyre-ai/node-dubber';

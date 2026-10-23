@@ -13,7 +13,7 @@ export interface GetRecordingParams {
   contentDisposition?: string;
 }
 
-const CONTENT_DISPOSITION_RE = /^(inline|attachment|attachment;filename=[^;\r\n"\\/]+\.mp3)$/i;
+const CONTENT_DISPOSITION_RE = /^(inline|attachment|attachment;filename=[^;\r\n"\\/]+\.mp3)$/;
 
 /**
  * Call recordings: single-shot upload, retrieval, metadata/tags, waveform,

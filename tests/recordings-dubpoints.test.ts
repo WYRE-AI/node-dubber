@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { DubberError, PaginationLimitError } from '../src/index.js';
+import { DubberError, PaginationLimitError, ValidationError } from '../src/index.js';
 import { BASE, makeClient } from './helpers.js';
 import { server } from './mocks/server.js';
 
@@ -39,6 +39,14 @@ describe('recordings.get link params', () => {
   it.each(['inline', 'attachment', 'attachment;filename=x.mp3'])('accepts %s', async (cd) => {
     captureGet('/recordings/:id', () => ({ id: 'rec-1' }));
     await expect(makeClient().recordings.get('rec-1', { content_disposition: cd })).resolves.toBeDefined();
+  });
+
+  it('rejects uppercase content_disposition without a request', async () => {
+    const seen = captureGet('/recordings/:id', () => ({ id: 'rec-1' }));
+    await expect(makeClient().recordings.get('rec-1', { content_disposition: 'INLINE' })).rejects.toBeInstanceOf(
+      ValidationError
+    );
+    expect(seen).toHaveLength(0);
   });
 
   it.each(['bogus', 'attachment;filename=x.wav', 'attachment;filename=.mp3', 'attachment;filename=a;b.mp3', ''])(
@@ -80,6 +88,7 @@ describe('dubPoints.listAll', () => {
     const seen = captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(100 * n++, 100) }));
     const result = await makeClient().dubPoints.listAllWithStatus('acc-1');
     expect(result.truncated).toBe(true);
+    expect(result.stopReason).toBe('limit');
     expect(result.requests).toBe(50);
     expect(seen).toHaveLength(50);
     expect(result.dubPoints).toHaveLength(5000);
@@ -91,15 +100,17 @@ describe('dubPoints.listAll', () => {
     }));
     const result = await makeClient().dubPoints.listAllWithStatus('acc-1');
     expect(result.truncated).toBe(false);
+    expect(result.stopReason).toBe('complete');
     expect(result.requests).toBe(2);
     expect(seen).toHaveLength(result.requests);
     expect(result.dubPoints).toHaveLength(107);
   });
 
-  it('does not report truncation when the server ignores page', async () => {
+  it('reports truncation when the server ignores page', async () => {
     const seen = captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(0, 100) }));
     const result = await makeClient().dubPoints.listAllWithStatus('acc-1');
-    expect(result.truncated).toBe(false);
+    expect(result.truncated).toBe(true);
+    expect(result.stopReason).toBe('no-progress');
     expect(result.requests).toBe(3);
     expect(seen).toHaveLength(result.requests);
     expect(result.dubPoints).toHaveLength(100);
@@ -119,8 +130,21 @@ describe('dubPoints.listAll', () => {
     const pending = makeClient().dubPoints.listAll('acc-1', { onLimit: 'throw' });
     await expect(pending).rejects.toBeInstanceOf(PaginationLimitError);
     await expect(pending).rejects.toBeInstanceOf(DubberError);
-    await expect(pending).rejects.toMatchObject({ partial: expect.any(Array), statusCode: 0 });
+    await expect(pending).rejects.toMatchObject({ partial: expect.any(Array), statusCode: 0, reason: 'limit' });
     await expect(pending).rejects.toHaveProperty('partial.length', 5000);
+  });
+
+  it('throws PaginationLimitError with typed partial results when the server ignores page', async () => {
+    const seen = captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(0, 100) }));
+    const pending = makeClient().dubPoints.listAll('acc-1', { onLimit: 'throw' });
+    await expect(pending).rejects.toBeInstanceOf(PaginationLimitError);
+    const error = await pending.catch((error: unknown) => error);
+    if (!(error instanceof PaginationLimitError)) throw new Error('Expected PaginationLimitError');
+    expect(error.reason).toBe('no-progress');
+    expect(error.message).toContain('no new dub points');
+    expect(error.partial).toHaveLength(100);
+    expect(error.partial[0]!.id).toBe('dp-0');
+    expect(seen).toHaveLength(3);
   });
 
   it('resolves normally with onLimit throw on a short page', async () => {
@@ -132,7 +156,10 @@ describe('dubPoints.listAll', () => {
     // Simulates 1-based paging: page=1 repeats the default first page.
     const pages: Record<string, ReturnType<typeof mk>> = { '': mk(0, 100), '1': mk(0, 100), '2': mk(100, 100), '3': mk(200, 7) };
     const seen = captureGet('/accounts/:id/dub_points', (url) => ({ dub_points: pages[url.searchParams.get('page') ?? ''] ?? [] }));
-    const all = await makeClient().dubPoints.listAll('acc-1', { user: 'u1' });
+    const result = await makeClient().dubPoints.listAllWithStatus('acc-1', { user: 'u1' });
+    expect(result.truncated).toBe(false);
+    expect(result.stopReason).toBe('complete');
+    const all = result.dubPoints;
     expect(all).toHaveLength(207);
     expect(new Set(all.map((d) => d.id)).size).toBe(207);
     const urls = seen.map((u) => new URL(u));
