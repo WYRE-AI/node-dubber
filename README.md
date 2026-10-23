@@ -28,6 +28,31 @@ const recordings = await client.recordings.list('acc-1');
 const recording = await client.recordings.get(recordings[0].id);
 ```
 
+### Listing and paging recordings
+
+`recordings.list` returns the newest 20 recordings by default. It takes Dubber's
+own query params: `count` (1–100), `page`, `before_id`, `after_id`, `query`,
+`dub_point` and `team`.
+
+- Results are newest-first. Page with the `before_id` cursor: pass the `id` of
+  the last recording of the previous page, and repeat until a page is empty or
+  shorter than `count`.
+- `page` works only for the first 5 pages (500 recordings) and cannot be
+  combined with `before_id`/`after_id`. `dub_point` and `team` cannot be combined.
+- Dubber has no server-side date/time filter, so the SDK has none either.
+- `limit` is a deprecated alias for `count`. `offset` does not exist in Dubber
+  (it was silently ignored, always returning the newest 20), so passing it now throws.
+
+```ts
+const page = await client.recordings.list('acc-1', { count: 100, dub_point: 'dp-1' });
+
+// Walk every recording, newest first (100 per request, following before_id):
+for await (const rec of client.recordings.iterate('acc-1', { team: 'team-1' })) {
+  if (rec.start_time && new Date(rec.start_time) < cutoff) break; // filter client-side
+  console.log(rec.id);
+}
+```
+
 ## Authentication
 
 Dubber uses an OAuth2 **password grant**, but `username`/`password` are not a

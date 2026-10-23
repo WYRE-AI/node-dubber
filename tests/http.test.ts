@@ -94,9 +94,9 @@ describe('HttpClient', () => {
         return HttpResponse.json({ data: [] });
       })
     );
-    await makeClient().recordings.list('acc-1', { limit: 10, offset: undefined });
-    expect(seenUrl!.searchParams.get('limit')).toBe('10');
-    expect(seenUrl!.searchParams.has('offset')).toBe(false);
+    await makeClient().recordings.list('acc-1', { count: 10, page: undefined });
+    expect(seenUrl!.searchParams.get('count')).toBe('10');
+    expect(seenUrl!.searchParams.has('page')).toBe(false);
   });
 
   it('strips a trailing slash from a configured baseUrl', async () => {
