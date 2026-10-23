@@ -99,19 +99,38 @@ export class RecordingsResource {
   /**
    * Walk an account's recordings newest-first, yielding each one. Pages with
    * `count` (default 100) and `before_id` = id of the last recording of the
-   * previous page, until a page is empty or shorter than `count`. Dubber has
+   * previous page, until a page is empty or shorter than `count`. Throws if a full page
+   * does not advance the cursor (missing/empty last id, or same as the cursor). Dubber has
    * no date filter, so none is applied here; stop iterating when you have enough.
    */
   async *iterate(accountId: string, params: IterateRecordingsParams = {}): AsyncGenerator<Recording, void, undefined> {
     const { count = 100, before_id, query, dub_point, team } = params;
     let cursor = before_id;
     for (;;) {
-      const page = await this.list(accountId, { count, before_id: cursor, query, dub_point, team });
+      const page = await this.list(accountId, {
+        count,
+        before_id: cursor,
+        query,
+        dub_point,
+        team,
+      });
+      if (page.length === 0) return;
+      const full = page.length >= count;
+      let next: string | undefined;
+      if (full) {
+        const last = page[page.length - 1]!.id;
+        next = last === undefined || last === null ? '' : String(last);
+        if (next === '' || next === cursor) {
+          throw new Error(
+            `recordings.iterate: received a full page of ${page.length} but its last recording id is ` +
+              `${next === '' ? 'missing or empty' : `unchanged from the cursor (${next})`}, so the cursor did not ` +
+              'advance and paging cannot continue safely'
+          );
+        }
+      }
       for (const recording of page) yield recording;
-      if (page.length === 0 || page.length < count) return;
-      const last = page[page.length - 1]!.id;
-      if (last === undefined || last === null || last === '' || last === cursor) return;
-      cursor = String(last);
+      if (!full) return;
+      cursor = next;
     }
   }
 

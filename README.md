@@ -46,6 +46,9 @@ own query params: `count` (1–100), `page`, `before_id`, `after_id`, `query`,
 ```ts
 const page = await client.recordings.list('acc-1', { count: 100, dub_point: 'dp-1' });
 
+// start_time is RFC 2822, which `new Date()` parses.
+const cutoff = new Date('2026-10-19T00:00:00+11:00');
+
 // Walk every recording, newest first (100 per request, following before_id):
 for await (const rec of client.recordings.iterate('acc-1', { team: 'team-1' })) {
   if (rec.start_time && new Date(rec.start_time) < cutoff) break; // filter client-side
