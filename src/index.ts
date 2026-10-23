@@ -22,7 +22,11 @@ export {
 } from './errors.js';
 export { GroupsResource } from './resources/groups.js';
 export { AccountsResource } from './resources/accounts.js';
-export { RecordingsResource } from './resources/recordings.js';
+export {
+  RecordingsResource,
+  type ListRecordingsParams,
+  type IterateRecordingsParams,
+} from './resources/recordings.js';
 export { UsersResource } from './resources/users.js';
 export { ProfileResource } from './resources/profile.js';
 export { NotificationsResource } from './resources/notifications.js';
