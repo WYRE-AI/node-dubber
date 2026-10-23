@@ -31,6 +31,17 @@ export interface Recording {
   created_at?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  self?: string;
+  to?: string;
+  from?: string;
+  call_type?: string;
+  channel?: string;
+  status?: string;
+  /** RFC 2822, e.g. "Sun, 28 Jul 2013 12:42:10 +1000". */
+  start_time?: string;
+  end_time?: string;
+  date_created?: string;
+  date_updated?: string;
   /**
    * Pre-signed, short-lived S3 URL. Only present when `recordings.get` was
    * called with a `listener`. Treat as a secret; never log it.
