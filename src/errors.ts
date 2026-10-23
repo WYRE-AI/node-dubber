@@ -19,6 +19,16 @@ export class DubberError extends Error {
   }
 }
 
+/** Pagination stopped at the request limit; partial contains the results collected so far. */
+export class PaginationLimitError extends DubberError {
+  constructor(
+    message: string,
+    public partial: unknown[]
+  ) {
+    super(message, 0, undefined);
+  }
+}
+
 /** 401, or a token-endpoint rejection. */
 export class AuthenticationError extends DubberError {}
 

@@ -1,14 +1,21 @@
 import type { HttpClient } from '../http.js';
 import type { DubPoint } from '../types/index.js';
 import { unwrapList } from '../types/index.js';
-import { ValidationError } from '../errors.js';
+import { PaginationLimitError, ValidationError } from '../errors.js';
 
 export interface ListDubPointsParams {
   /** Only this user's dub points (Dubber user id, not a URL). */
   user?: string;
   /** Page size, 1..100 (Dubber default 20). */
   count?: number;
+  /** Page number, a non-negative integer. Dubber does not document whether pages are 0- or 1-based. */
   page?: number;
+}
+
+export interface ListAllDubPointsResult {
+  dubPoints: DubPoint[];
+  truncated: boolean;
+  requests: number;
 }
 
 const MAX_COUNT = 100;
@@ -18,6 +25,12 @@ const MAX_PAGES = 50;
 export class DubPointsResource {
   constructor(private readonly http: HttpClient) {}
 
+  /**
+   * Fetch one page of dub points for an account, optionally filtered by `user` (Dubber user id).
+   * `count` is 1..100 (Dubber default 20); `page` is a non-negative integer with an undocumented base.
+   * Throws ValidationError for invalid count/page before any request.
+   * Use listAll or listAllWithStatus to fetch every page.
+   */
   async list(accountId: string, params?: ListDubPointsParams): Promise<DubPoint[]> {
     if (params?.count !== undefined && (!Number.isInteger(params.count) || params.count < 1 || params.count > MAX_COUNT)) {
       throw new ValidationError(`count must be an integer between 1 and ${MAX_COUNT}`, 0, undefined);
@@ -42,16 +55,34 @@ export class DubPointsResource {
    * onward is correct. Stops on a short/empty page, or a page past page=1
    * yielding no new ids (guards against a server ignoring `page`), with a hard
    * cap of {@link MAX_PAGES} requests. Results are deduped by id.
+   * By default (`onLimit: 'return'`), returns collected results even at the cap.
+   * With `onLimit: 'throw'`, throws PaginationLimitError with partial results if more may exist.
+   * Use listAllWithStatus to inspect truncation and the number of requests.
    */
-  async listAll(accountId: string, params?: { user?: string }): Promise<DubPoint[]> {
+  async listAll(accountId: string, params?: { user?: string; onLimit?: 'return' | 'throw' }): Promise<DubPoint[]> {
+    const result = await this.listAllWithStatus(accountId, params);
+    if (result.truncated && params?.onLimit === 'throw') {
+      throw new PaginationLimitError(
+        `listAll stopped at the ${MAX_PAGES}-request pagination limit; more dub points may exist ` +
+          `(${result.dubPoints.length} collected). Use listAllWithStatus or narrow with user.`,
+        result.dubPoints
+      );
+    }
+    return result.dubPoints;
+  }
+
+  /** Fetch deduped dub points as in listAll, reporting whether the request cap may have left more results. */
+  async listAllWithStatus(accountId: string, params?: { user?: string }): Promise<ListAllDubPointsResult> {
     const seen = new Set<string>();
     const all: DubPoint[] = [];
+    let requests = 0;
     for (let request = 0; request < MAX_PAGES; request++) {
       const page = await this.list(accountId, {
         user: params?.user,
         count: MAX_COUNT,
         page: request === 0 ? undefined : request,
       });
+      requests++;
       let added = 0;
       for (const dp of page) {
         if (seen.has(dp.id)) continue;
@@ -59,10 +90,11 @@ export class DubPointsResource {
         all.push(dp);
         added++;
       }
-      if (page.length < MAX_COUNT) break;
-      if (added === 0 && request > 1) break;
+      if (page.length < MAX_COUNT || (added === 0 && request > 1)) {
+        return { dubPoints: all, truncated: false, requests };
+      }
     }
-    return all;
+    return { dubPoints: all, truncated: true, requests };
   }
 
   async create(accountId: string, data: Record<string, unknown>): Promise<DubPoint> {

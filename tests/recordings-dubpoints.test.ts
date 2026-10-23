@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { DubberError, PaginationLimitError } from '../src/index.js';
 import { BASE, makeClient } from './helpers.js';
 import { server } from './mocks/server.js';
 
@@ -73,6 +74,59 @@ describe('dubPoints.list params', () => {
 describe('dubPoints.listAll', () => {
   const mk = (from: number, n: number) =>
     Array.from({ length: n }, (_, i) => ({ id: `dp-${from + i}` }));
+
+  it('reports truncation after 50 full pages of new ids', async () => {
+    let n = 0;
+    const seen = captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(100 * n++, 100) }));
+    const result = await makeClient().dubPoints.listAllWithStatus('acc-1');
+    expect(result.truncated).toBe(true);
+    expect(result.requests).toBe(50);
+    expect(seen).toHaveLength(50);
+    expect(result.dubPoints).toHaveLength(5000);
+  });
+
+  it('reports a normal stop on a short page', async () => {
+    const seen = captureGet('/accounts/:id/dub_points', (url) => ({
+      dub_points: url.searchParams.has('page') ? mk(100, 7) : mk(0, 100),
+    }));
+    const result = await makeClient().dubPoints.listAllWithStatus('acc-1');
+    expect(result.truncated).toBe(false);
+    expect(result.requests).toBe(2);
+    expect(seen).toHaveLength(result.requests);
+    expect(result.dubPoints).toHaveLength(107);
+  });
+
+  it('does not report truncation when the server ignores page', async () => {
+    const seen = captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(0, 100) }));
+    const result = await makeClient().dubPoints.listAllWithStatus('acc-1');
+    expect(result.truncated).toBe(false);
+    expect(result.requests).toBe(3);
+    expect(seen).toHaveLength(result.requests);
+    expect(result.dubPoints).toHaveLength(100);
+  });
+
+  it('returns an array by default at the pagination limit', async () => {
+    let n = 0;
+    captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(100 * n++, 100) }));
+    const all = await makeClient().dubPoints.listAll('acc-1');
+    expect(Array.isArray(all)).toBe(true);
+    expect(all).toHaveLength(5000);
+  });
+
+  it('throws PaginationLimitError with partial results when requested', async () => {
+    let n = 0;
+    captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(100 * n++, 100) }));
+    const pending = makeClient().dubPoints.listAll('acc-1', { onLimit: 'throw' });
+    await expect(pending).rejects.toBeInstanceOf(PaginationLimitError);
+    await expect(pending).rejects.toBeInstanceOf(DubberError);
+    await expect(pending).rejects.toMatchObject({ partial: expect.any(Array), statusCode: 0 });
+    await expect(pending).rejects.toHaveProperty('partial.length', 5000);
+  });
+
+  it('resolves normally with onLimit throw on a short page', async () => {
+    captureGet('/accounts/:id/dub_points', () => ({ dub_points: mk(0, 7) }));
+    await expect(makeClient().dubPoints.listAll('acc-1', { onLimit: 'throw' })).resolves.toEqual(mk(0, 7));
+  });
 
   it('pages until a short page, omitting page on the first request, deduping a repeated page', async () => {
     // Simulates 1-based paging: page=1 repeats the default first page.

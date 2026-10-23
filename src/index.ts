@@ -11,6 +11,7 @@ export {
 export { HttpClient, type HttpClientConfig, type RequestOptions, type BinaryResponse } from './http.js';
 export {
   DubberError,
+  PaginationLimitError,
   AuthenticationError,
   ForbiddenError,
   NotFoundError,
@@ -26,6 +27,10 @@ export { RecordingsResource, type GetRecordingParams } from './resources/recordi
 export { UsersResource } from './resources/users.js';
 export { ProfileResource } from './resources/profile.js';
 export { NotificationsResource } from './resources/notifications.js';
-export { DubPointsResource, type ListDubPointsParams } from './resources/dub-points.js';
+export {
+  DubPointsResource,
+  type ListDubPointsParams,
+  type ListAllDubPointsResult,
+} from './resources/dub-points.js';
 export { unwrapList } from './types/index.js';
 export type * from './types/index.js';
